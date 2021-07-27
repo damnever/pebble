@@ -10,6 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+	"golang.org/x/exp/rand"
+
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
@@ -17,8 +20,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
-	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/rand"
 )
 
 func TestMergingIter(t *testing.T) {
@@ -153,7 +154,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 			if err != nil {
 				return nil, nil, err
 			}
-			iter, err := r.NewIter(opts.GetLowerBound(), opts.GetUpperBound())
+			iter, err := r.NewIter(opts.GetLowerBound(), opts.GetUpperBound(), opts.DisableCache)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -348,7 +349,7 @@ func BenchmarkMergingIterSeekGE(b *testing.B) {
 							iters := make([]internalIterator, len(readers))
 							for i := range readers {
 								var err error
-								iters[i], err = readers[i].NewIter(nil /* lower */, nil /* upper */)
+								iters[i], err = readers[i].NewIter(nil /* lower */, nil /* upper */, false /* disableCache */)
 								require.NoError(b, err)
 							}
 							m := newMergingIter(nil /* logger */, DefaultComparer.Compare,
@@ -380,7 +381,7 @@ func BenchmarkMergingIterNext(b *testing.B) {
 							iters := make([]internalIterator, len(readers))
 							for i := range readers {
 								var err error
-								iters[i], err = readers[i].NewIter(nil /* lower */, nil /* upper */)
+								iters[i], err = readers[i].NewIter(nil /* lower */, nil /* upper */, false /* disableCache */)
 								require.NoError(b, err)
 							}
 							m := newMergingIter(nil /* logger */, DefaultComparer.Compare,
@@ -415,7 +416,7 @@ func BenchmarkMergingIterPrev(b *testing.B) {
 							iters := make([]internalIterator, len(readers))
 							for i := range readers {
 								var err error
-								iters[i], err = readers[i].NewIter(nil /* lower */, nil /* upper */)
+								iters[i], err = readers[i].NewIter(nil /* lower */, nil /* upper */, false)
 								require.NoError(b, err)
 							}
 							m := newMergingIter(nil /* logger */, DefaultComparer.Compare,
@@ -545,7 +546,7 @@ func buildLevelsForMergingIterSeqSeek(
 	for i := range readers {
 		meta := make([]*fileMetadata, len(readers[i]))
 		for j := range readers[i] {
-			iter, err := readers[i][j].NewIter(nil /* lower */, nil /* upper */)
+			iter, err := readers[i][j].NewIter(nil /* lower */, nil /* upper */, false)
 			require.NoError(b, err)
 			key, _ := iter.First()
 			meta[j] = &fileMetadata{}
@@ -571,7 +572,7 @@ func buildMergingIter(readers [][]*sstable.Reader, levelSlices []manifest.LevelS
 			file *manifest.FileMetadata, opts *IterOptions, _ *uint64,
 		) (internalIterator, internalIterator, error) {
 			iter, err := readers[levelIndex][file.FileNum].NewIter(
-				opts.LowerBound, opts.UpperBound)
+				opts.LowerBound, opts.UpperBound, opts.DisableCache)
 			if err != nil {
 				return nil, nil, err
 			}

@@ -20,13 +20,14 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
+	"github.com/stretchr/testify/require"
+
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/errorfs"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
-	"github.com/stretchr/testify/require"
 )
 
 func newVersion(opts *Options, files [numLevels][]*fileMetadata) *version {
@@ -848,7 +849,7 @@ func TestCompaction(t *testing.T) {
 					return "", "", errors.WithStack(err)
 				}
 				defer r.Close()
-				iter, err := r.NewIter(nil /* lower */, nil /* upper */)
+				iter, err := r.NewIter(nil /* lower */, nil /* upper */, false /* disableCache */)
 				if err != nil {
 					return "", "", errors.WithStack(err)
 				}

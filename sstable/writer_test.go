@@ -10,11 +10,12 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/vfs"
-	"github.com/stretchr/testify/require"
 )
 
 func TestWriter(t *testing.T) {
@@ -60,7 +61,7 @@ func TestWriter(t *testing.T) {
 				meta.SmallestSeqNum, meta.LargestSeqNum)
 
 		case "scan":
-			origIter, err := r.NewIter(nil /* lower */, nil /* upper */)
+			origIter, err := r.NewIter(nil /* lower */, nil /* upper */, false /* disableCache */)
 			if err != nil {
 				return err.Error()
 			}

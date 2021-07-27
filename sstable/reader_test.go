@@ -18,14 +18,15 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/stretchr/testify/require"
+	"golang.org/x/exp/rand"
+
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/errorfs"
 	"github.com/cockroachdb/pebble/vfs"
-	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/rand"
 )
 
 // iterAdapter adapts the new Iterator API which returns the key and value from
@@ -211,7 +212,7 @@ func TestInjectedErrors(t *testing.T) {
 				return err
 			}
 
-			iter, err := r.NewIter(nil, nil)
+			iter, err := r.NewIter(nil, nil, false /* disableCache */)
 			if err != nil {
 				return err
 			}
@@ -412,7 +413,7 @@ func testBytesIteratedWithCompression(
 			for _, numEntries := range []uint64{0, 1, maxNumEntries[i]} {
 				r := buildTestTable(t, numEntries, blockSize, indexBlockSize, compression)
 				var bytesIterated, prevIterated uint64
-				citer, err := r.NewCompactionIter(&bytesIterated)
+				citer, err := r.NewCompactionIter(&bytesIterated, false /* disableCache */)
 				require.NoError(t, err)
 
 				for key, _ := citer.First(); key != nil; key, _ = citer.Next() {
@@ -462,7 +463,7 @@ func TestCompactionIteratorSetupForCompaction(t *testing.T) {
 			for _, numEntries := range []uint64{0, 1, 1e5} {
 				r := buildTestTable(t, numEntries, blockSize, indexBlockSize, DefaultCompression)
 				var bytesIterated uint64
-				citer, err := r.NewCompactionIter(&bytesIterated)
+				citer, err := r.NewCompactionIter(&bytesIterated, false)
 				require.NoError(t, err)
 				switch i := citer.(type) {
 				case *compactionIterator:
@@ -592,14 +593,14 @@ func TestReaderChecksumErrors(t *testing.T) {
 						r, err := NewReader(corrupted, ReaderOptions{})
 						require.NoError(t, err)
 
-						iter, err := r.NewIter(nil, nil)
+						iter, err := r.NewIter(nil, nil, false /* disableCache */)
 						require.NoError(t, err)
 						for k, _ := iter.First(); k != nil; k, _ = iter.Next() {
 						}
 						require.Regexp(t, `checksum mismatch`, iter.Error())
 						require.Regexp(t, `checksum mismatch`, iter.Close())
 
-						iter, err = r.NewIter(nil, nil)
+						iter, err = r.NewIter(nil, nil, false /* disableCache */)
 						require.NoError(t, err)
 						for k, _ := iter.Last(); k != nil; k, _ = iter.Prev() {
 						}
@@ -723,7 +724,7 @@ func BenchmarkTableIterSeekGE(b *testing.B) {
 		b.Run(bm.name,
 			func(b *testing.B) {
 				r, keys := buildBenchmarkTable(b, bm.options)
-				it, err := r.NewIter(nil /* lower */, nil /* upper */)
+				it, err := r.NewIter(nil /* lower */, nil /* upper */, false /* disableCache */)
 				require.NoError(b, err)
 				rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 
@@ -744,7 +745,7 @@ func BenchmarkTableIterSeekLT(b *testing.B) {
 		b.Run(bm.name,
 			func(b *testing.B) {
 				r, keys := buildBenchmarkTable(b, bm.options)
-				it, err := r.NewIter(nil /* lower */, nil /* upper */)
+				it, err := r.NewIter(nil /* lower */, nil /* upper */, false)
 				require.NoError(b, err)
 				rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 
@@ -765,7 +766,7 @@ func BenchmarkTableIterNext(b *testing.B) {
 		b.Run(bm.name,
 			func(b *testing.B) {
 				r, _ := buildBenchmarkTable(b, bm.options)
-				it, err := r.NewIter(nil /* lower */, nil /* upper */)
+				it, err := r.NewIter(nil /* lower */, nil /* upper */, false)
 				require.NoError(b, err)
 
 				b.ResetTimer()
@@ -794,7 +795,7 @@ func BenchmarkTableIterPrev(b *testing.B) {
 		b.Run(bm.name,
 			func(b *testing.B) {
 				r, _ := buildBenchmarkTable(b, bm.options)
-				it, err := r.NewIter(nil /* lower */, nil /* upper */)
+				it, err := r.NewIter(nil /* lower */, nil /* upper */, false)
 				require.NoError(b, err)
 
 				b.ResetTimer()

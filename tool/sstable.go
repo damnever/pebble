@@ -11,6 +11,8 @@ import (
 	"sort"
 	"text/tabwriter"
 
+	"github.com/spf13/cobra"
+
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/humanize"
@@ -18,7 +20,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
-	"github.com/spf13/cobra"
 )
 
 // sstableT implements sstable-level tools, including both configuration state
@@ -170,7 +171,7 @@ func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {
 		s.fmtKey.setForComparer(r.Properties.ComparerName, s.comparers)
 		s.fmtValue.setForComparer(r.Properties.ComparerName, s.comparers)
 
-		iter, err := r.NewIter(nil, nil)
+		iter, err := r.NewIter(nil, nil, false)
 		if err != nil {
 			fmt.Fprintf(stderr, "%s\n", err)
 			return
@@ -181,7 +182,7 @@ func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {
 		var prefixIter sstable.Iterator
 		if r.Split != nil {
 			var err error
-			prefixIter, err = r.NewIter(nil, nil)
+			prefixIter, err = r.NewIter(nil, nil, false)
 			if err != nil {
 				fmt.Fprintf(stderr, "%s\n", err)
 				return
@@ -377,7 +378,7 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 		s.fmtKey.setForComparer(r.Properties.ComparerName, s.comparers)
 		s.fmtValue.setForComparer(r.Properties.ComparerName, s.comparers)
 
-		iter, err := r.NewIter(nil, s.end)
+		iter, err := r.NewIter(nil, s.end, false)
 		if err != nil {
 			fmt.Fprintf(stderr, "%s%s\n", prefix, err)
 			return

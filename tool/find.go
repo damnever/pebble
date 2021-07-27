@@ -10,6 +10,8 @@ import (
 	"io"
 	"sort"
 
+	"github.com/spf13/cobra"
+
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -17,7 +19,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
-	"github.com/spf13/cobra"
 )
 
 type findRef struct {
@@ -421,7 +422,7 @@ func (f *findT) searchTables(searchKey []byte, refs []findRef) []findRef {
 				r.Properties.GlobalSeqNum = m.LargestSeqNum
 			}
 
-			iter, err := r.NewIter(nil, nil)
+			iter, err := r.NewIter(nil, nil, false)
 			if err != nil {
 				return err
 			}

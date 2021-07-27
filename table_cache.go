@@ -15,6 +15,7 @@ import (
 	"unsafe"
 
 	"github.com/cockroachdb/errors"
+
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -204,9 +205,9 @@ func (c *tableCacheShard) newIters(
 	var iter sstable.Iterator
 	var err error
 	if bytesIterated != nil {
-		iter, err = v.reader.NewCompactionIter(bytesIterated)
+		iter, err = v.reader.NewCompactionIter(bytesIterated, opts.CacheDisabled())
 	} else {
-		iter, err = v.reader.NewIter(opts.GetLowerBound(), opts.GetUpperBound())
+		iter, err = v.reader.NewIter(opts.GetLowerBound(), opts.GetUpperBound(), opts.CacheDisabled())
 	}
 	if err != nil {
 		c.unrefValue(v)
