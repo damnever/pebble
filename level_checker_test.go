@@ -13,6 +13,8 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/errors"
+	"github.com/stretchr/testify/require"
+
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -20,7 +22,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
-	"github.com/stretchr/testify/require"
 )
 
 func TestCheckLevelsBasics(t *testing.T) {
@@ -99,7 +100,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 			if err != nil {
 				return nil, nil, err
 			}
-			iter, err := r.NewIter(nil /* lower */, nil /* upper */)
+			iter, err := r.NewIter(nil /* lower */, nil /* upper */, false /* disableCache */)
 			if err != nil {
 				return nil, nil, err
 			}

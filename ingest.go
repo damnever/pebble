@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
@@ -85,7 +86,7 @@ func ingestLoad1(
 	empty := true
 
 	{
-		iter, err := r.NewIter(nil /* lower */, nil /* upper */)
+		iter, err := r.NewIter(nil /* lower */, nil /* upper */, false)
 		if err != nil {
 			return nil, err
 		}

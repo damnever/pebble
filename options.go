@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/humanize"
@@ -73,6 +74,9 @@ type IterOptions struct {
 	// function can be used by multiple iterators, if the iterator is cloned.
 	TableFilter func(userProps map[string]string) bool
 
+	// DisableCache TODO(damnever)
+	DisableCache bool
+
 	// Internal options.
 	logger Logger
 }
@@ -91,6 +95,14 @@ func (o *IterOptions) GetUpperBound() []byte {
 		return nil
 	}
 	return o.UpperBound
+}
+
+// CacheDisabled TODO.
+func (o *IterOptions) CacheDisabled() bool {
+	if o == nil {
+		return false
+	}
+	return o.DisableCache
 }
 
 func (o *IterOptions) getLogger() Logger {

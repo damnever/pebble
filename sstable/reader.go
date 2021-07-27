@@ -16,6 +16,7 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/cockroachdb/errors"
+
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/crc"
@@ -74,8 +75,9 @@ type Iterator interface {
 type singleLevelIterator struct {
 	cmp Compare
 	// Global lower/upper bound for the iterator.
-	lower []byte
-	upper []byte
+	lower        []byte
+	upper        []byte
+	disableCache bool
 	// Per-block lower/upper bound. Nil if the bound does not apply to the block
 	// because we determined the block lies completely within the bound.
 	blockLower []byte
@@ -206,11 +208,11 @@ func checkTwoLevelIterator(obj interface{}) {
 // init initializes a singleLevelIterator for reading from the table. It is
 // synonmous with Reader.NewIter, but allows for reusing of the iterator
 // between different Readers.
-func (i *singleLevelIterator) init(r *Reader, lower, upper []byte) error {
+func (i *singleLevelIterator) init(r *Reader, lower, upper []byte, disableCache bool) error {
 	if r.err != nil {
 		return r.err
 	}
-	indexH, err := r.readIndex()
+	indexH, err := r.readIndex(disableCache)
 	if err != nil {
 		return err
 	}
@@ -289,7 +291,7 @@ func (i *singleLevelIterator) loadBlock() bool {
 		i.err = errCorruptIndexEntry
 		return false
 	}
-	block, err := i.reader.readBlock(i.dataBH, nil /* transform */, &i.dataRS)
+	block, err := i.reader.readBlock(i.dataBH, nil /* transform */, &i.dataRS, i.disableCache)
 	if err != nil {
 		i.err = err
 		return false
@@ -502,7 +504,7 @@ func (i *singleLevelIterator) seekPrefixGE(
 		i.lastBloomFilterMatched = false
 		// Check prefix bloom filter.
 		var dataH cache.Handle
-		dataH, i.err = i.reader.readFilter()
+		dataH, i.err = i.reader.readFilter(i.disableCache)
 		if i.err != nil {
 			i.data.invalidate()
 			return nil, nil
@@ -945,7 +947,7 @@ var _ base.InternalIterator = (*twoLevelIterator)(nil)
 // leaves i.index unpositioned. If unsuccessful, it gets i.err to any error
 // encountered, which may be nil if we have simply exhausted the entire table.
 // This is used for two level indexes.
-func (i *twoLevelIterator) loadIndex() bool {
+func (i *twoLevelIterator) loadIndex(disableCache bool) bool {
 	// Ensure the data block iterator is invalidated even if loading of the
 	// index fails.
 	i.data.invalidate()
@@ -959,7 +961,7 @@ func (i *twoLevelIterator) loadIndex() bool {
 		i.err = base.CorruptionErrorf("pebble/table: corrupt top level index entry")
 		return false
 	}
-	indexBlock, err := i.reader.readBlock(h, nil /* transform */, nil /* readaheadState */)
+	indexBlock, err := i.reader.readBlock(h, nil /* transform */, nil /* readaheadState */, disableCache)
 	if err != nil {
 		i.err = err
 		return false
@@ -968,17 +970,18 @@ func (i *twoLevelIterator) loadIndex() bool {
 	return i.err == nil
 }
 
-func (i *twoLevelIterator) init(r *Reader, lower, upper []byte) error {
+func (i *twoLevelIterator) init(r *Reader, lower, upper []byte, disableCache bool) error {
 	if r.err != nil {
 		return r.err
 	}
-	topLevelIndexH, err := r.readIndex()
+	topLevelIndexH, err := r.readIndex(disableCache)
 	if err != nil {
 		return err
 	}
 
 	i.lower = lower
 	i.upper = upper
+	i.disableCache = disableCache
 	i.reader = r
 	i.cmp = r.Compare
 	err = i.topLevelIndex.initHandle(i.cmp, topLevelIndexH, r.Properties.GlobalSeqNum)
@@ -1010,7 +1013,7 @@ func (i *twoLevelIterator) SeekGE(key []byte) (*InternalKey, []byte) {
 			return nil, nil
 		}
 
-		if !i.loadIndex() {
+		if !i.loadIndex(i.disableCache) {
 			return nil, nil
 		}
 	}
@@ -1045,7 +1048,7 @@ func (i *twoLevelIterator) SeekPrefixGE(
 		}
 		i.lastBloomFilterMatched = false
 		var dataH cache.Handle
-		dataH, i.err = i.reader.readFilter()
+		dataH, i.err = i.reader.readFilter(false)
 		if i.err != nil {
 			i.data.invalidate()
 			return nil, nil
@@ -1085,7 +1088,7 @@ func (i *twoLevelIterator) SeekPrefixGE(
 			return nil, nil
 		}
 
-		if !i.loadIndex() {
+		if !i.loadIndex(i.disableCache) {
 			return nil, nil
 		}
 	}
@@ -1132,14 +1135,14 @@ func (i *twoLevelIterator) SeekLT(key []byte) (*InternalKey, []byte) {
 			return nil, nil
 		}
 
-		if !i.loadIndex() {
+		if !i.loadIndex(i.disableCache) {
 			return nil, nil
 		}
 
 		return i.singleLevelIterator.lastInternal()
 	}
 
-	if !i.loadIndex() {
+	if !i.loadIndex(i.disableCache) {
 		return nil, nil
 	}
 
@@ -1166,7 +1169,7 @@ func (i *twoLevelIterator) First() (*InternalKey, []byte) {
 		return nil, nil
 	}
 
-	if !i.loadIndex() {
+	if !i.loadIndex(i.disableCache) {
 		return nil, nil
 	}
 
@@ -1193,7 +1196,7 @@ func (i *twoLevelIterator) Last() (*InternalKey, []byte) {
 		return nil, nil
 	}
 
-	if !i.loadIndex() {
+	if !i.loadIndex(i.disableCache) {
 		return nil, nil
 	}
 
@@ -1250,7 +1253,7 @@ func (i *twoLevelIterator) skipForward() (*InternalKey, []byte) {
 			i.index.invalidate()
 			return nil, nil
 		}
-		if !i.loadIndex() {
+		if !i.loadIndex(i.disableCache) {
 			return nil, nil
 		}
 		if ikey, val := i.singleLevelIterator.firstInternal(); ikey != nil {
@@ -1275,7 +1278,7 @@ func (i *twoLevelIterator) skipBackward() (*InternalKey, []byte) {
 			i.index.invalidate()
 			return nil, nil
 		}
-		if !i.loadIndex() {
+		if !i.loadIndex(i.disableCache) {
 			return nil, nil
 		}
 		if ikey, val := i.singleLevelIterator.lastInternal(); ikey != nil {
@@ -1370,7 +1373,7 @@ func (i *twoLevelCompactionIterator) skipForward(
 			if key, _ := i.topLevelIndex.Next(); key == nil {
 				break
 			}
-			if i.loadIndex() {
+			if i.loadIndex(i.disableCache) {
 				if key, val = i.singleLevelIterator.First(); key != nil {
 					break
 				}
@@ -1736,7 +1739,7 @@ func (r *Reader) get(key []byte) (value []byte, err error) {
 	}
 
 	if r.tableFilter != nil {
-		dataH, err := r.readFilter()
+		dataH, err := r.readFilter(false)
 		if err != nil {
 			return nil, err
 		}
@@ -1753,7 +1756,7 @@ func (r *Reader) get(key []byte) (value []byte, err error) {
 		}
 	}
 
-	i, err := r.NewIter(nil /* lower */, nil /* upper */)
+	i, err := r.NewIter(nil /* lower */, nil /* upper */, false)
 	if err != nil {
 		return nil, err
 	}
@@ -1779,13 +1782,13 @@ func (r *Reader) get(key []byte) (value []byte, err error) {
 
 // NewIter returns an iterator for the contents of the table. If an error
 // occurs, NewIter cleans up after itself and returns a nil iterator.
-func (r *Reader) NewIter(lower, upper []byte) (Iterator, error) {
+func (r *Reader) NewIter(lower, upper []byte, disableCache bool) (Iterator, error) {
 	// NB: pebble.tableCache wraps the returned iterator with one which performs
 	// reference counting on the Reader, preventing the Reader from being closed
 	// until the final iterator closes.
 	if r.Properties.IndexType == twoLevelIndex {
 		i := twoLevelIterPool.Get().(*twoLevelIterator)
-		err := i.init(r, lower, upper)
+		err := i.init(r, lower, upper, disableCache)
 		if err != nil {
 			return nil, err
 		}
@@ -1793,7 +1796,7 @@ func (r *Reader) NewIter(lower, upper []byte) (Iterator, error) {
 	}
 
 	i := singleLevelIterPool.Get().(*singleLevelIterator)
-	err := i.init(r, lower, upper)
+	err := i.init(r, lower, upper, disableCache)
 	if err != nil {
 		return nil, err
 	}
@@ -1803,10 +1806,10 @@ func (r *Reader) NewIter(lower, upper []byte) (Iterator, error) {
 // NewCompactionIter returns an iterator similar to NewIter but it also increments
 // the number of bytes iterated. If an error occurs, NewCompactionIter cleans up
 // after itself and returns a nil iterator.
-func (r *Reader) NewCompactionIter(bytesIterated *uint64) (Iterator, error) {
+func (r *Reader) NewCompactionIter(bytesIterated *uint64, disableCache bool) (Iterator, error) {
 	if r.Properties.IndexType == twoLevelIndex {
 		i := twoLevelIterPool.Get().(*twoLevelIterator)
-		err := i.init(r, nil /* lower */, nil /* upper */)
+		err := i.init(r, nil /* lower */, nil /* upper */, disableCache /* disableCache */)
 		if err != nil {
 			return nil, err
 		}
@@ -1817,7 +1820,7 @@ func (r *Reader) NewCompactionIter(bytesIterated *uint64) (Iterator, error) {
 		}, nil
 	}
 	i := singleLevelIterPool.Get().(*singleLevelIterator)
-	err := i.init(r, nil /* lower */, nil /* upper */)
+	err := i.init(r, nil /* lower */, nil /* upper */, disableCache)
 	if err != nil {
 		return nil, err
 	}
@@ -1835,7 +1838,7 @@ func (r *Reader) NewRawRangeDelIter() (base.InternalIterator, error) {
 	if r.rangeDelBH.Length == 0 {
 		return nil, nil
 	}
-	h, err := r.readRangeDel()
+	h, err := r.readRangeDel(false)
 	if err != nil {
 		return nil, err
 	}
@@ -1846,21 +1849,21 @@ func (r *Reader) NewRawRangeDelIter() (base.InternalIterator, error) {
 	return i, nil
 }
 
-func (r *Reader) readIndex() (cache.Handle, error) {
-	return r.readBlock(r.indexBH, nil /* transform */, nil /* readaheadState */)
+func (r *Reader) readIndex(disableCache bool) (cache.Handle, error) {
+	return r.readBlock(r.indexBH, nil /* transform */, nil /* readaheadState */, disableCache)
 }
 
-func (r *Reader) readFilter() (cache.Handle, error) {
-	return r.readBlock(r.filterBH, nil /* transform */, nil /* readaheadState */)
+func (r *Reader) readFilter(disableCache bool) (cache.Handle, error) {
+	return r.readBlock(r.filterBH, nil /* transform */, nil /* readaheadState */, disableCache)
 }
 
-func (r *Reader) readRangeDel() (cache.Handle, error) {
-	return r.readBlock(r.rangeDelBH, r.rangeDelTransform, nil /* readaheadState */)
+func (r *Reader) readRangeDel(disableCache bool) (cache.Handle, error) {
+	return r.readBlock(r.rangeDelBH, r.rangeDelTransform, nil /* readaheadState */, disableCache)
 }
 
 // readBlock reads and decompresses a block from disk into memory.
 func (r *Reader) readBlock(
-	bh BlockHandle, transform blockTransform, raState *readaheadState,
+	bh BlockHandle, transform blockTransform, raState *readaheadState, disableCache bool,
 ) (cache.Handle, error) {
 	if h := r.opts.Cache.Get(r.cacheID, r.fileNum, bh.Offset); h.Get() != nil {
 		if raState != nil {
@@ -1961,6 +1964,9 @@ func (r *Reader) readBlock(
 		v = newV
 	}
 
+	if disableCache {
+		return cache.HandleFrom(v), nil
+	}
 	h := r.opts.Cache.Set(r.cacheID, r.fileNum, bh.Offset, v)
 	return h, nil
 }
@@ -2009,7 +2015,7 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 }
 
 func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
-	b, err := r.readBlock(metaindexBH, nil /* transform */, nil /* readaheadState */)
+	b, err := r.readBlock(metaindexBH, nil /* transform */, nil /* readaheadState */, false)
 	if err != nil {
 		return err
 	}
@@ -2039,7 +2045,7 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 	}
 
 	if bh, ok := meta[metaPropertiesName]; ok {
-		b, err = r.readBlock(bh, nil /* transform */, nil /* readaheadState */)
+		b, err = r.readBlock(bh, nil /* transform */, nil /* readaheadState */, false)
 		if err != nil {
 			return err
 		}
@@ -2105,7 +2111,7 @@ func (r *Reader) Layout() (*Layout, error) {
 		Footer:     r.footerBH,
 	}
 
-	indexH, err := r.readIndex()
+	indexH, err := r.readIndex(false)
 	if err != nil {
 		return nil, err
 	}
@@ -2131,7 +2137,7 @@ func (r *Reader) Layout() (*Layout, error) {
 			}
 			l.Index = append(l.Index, indexBH)
 
-			subIndex, err := r.readBlock(indexBH, nil /* transform */, nil /* readaheadState */)
+			subIndex, err := r.readBlock(indexBH, nil /* transform */, nil /* readaheadState */, false)
 			if err != nil {
 				return nil, err
 			}
@@ -2165,7 +2171,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 		return 0, r.err
 	}
 
-	indexH, err := r.readIndex()
+	indexH, err := r.readIndex(false)
 	if err != nil {
 		return 0, err
 	}
@@ -2197,7 +2203,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 		if n == 0 || n != len(val) {
 			return 0, errCorruptIndexEntry
 		}
-		startIdxBlock, err := r.readBlock(startIdxBH, nil /* transform */, nil /* readaheadState */)
+		startIdxBlock, err := r.readBlock(startIdxBH, nil /* transform */, nil /* readaheadState */, false)
 		if err != nil {
 			return 0, err
 		}
@@ -2217,7 +2223,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 			if n == 0 || n != len(val) {
 				return 0, errCorruptIndexEntry
 			}
-			endIdxBlock, err := r.readBlock(endIdxBH, nil /* transform */, nil /* readaheadState */)
+			endIdxBlock, err := r.readBlock(endIdxBH, nil /* transform */, nil /* readaheadState */, false)
 			if err != nil {
 				return 0, err
 			}
@@ -2415,7 +2421,7 @@ func (l *Layout) Describe(
 			continue
 		}
 
-		h, err := r.readBlock(b.BlockHandle, nil /* transform */, nil /* readaheadState */)
+		h, err := r.readBlock(b.BlockHandle, nil /* transform */, nil /* readaheadState */, false)
 		if err != nil {
 			fmt.Fprintf(w, "  [err: %s]\n", err)
 			continue

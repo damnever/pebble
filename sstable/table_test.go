@@ -19,12 +19,13 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/bloom"
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/vfs"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
+
+	"github.com/cockroachdb/pebble/bloom"
+	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/vfs"
 )
 
 // nonsenseWords are words that aren't in testdata/h.txt.
@@ -142,7 +143,7 @@ func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
 		}
 
 		// Check using SeekGE.
-		iter, err := r.NewIter(nil /* lower */, nil /* upper */)
+		iter, err := r.NewIter(nil /* lower */, nil /* upper */, false /* disableCache */)
 		if err != nil {
 			return err
 		}
@@ -192,7 +193,7 @@ func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
 		}
 
 		// Check using Find.
-		iter, err := r.NewIter(nil /* lower */, nil /* upper */)
+		iter, err := r.NewIter(nil /* lower */, nil /* upper */, false /* disableCache */)
 		if err != nil {
 			return err
 		}
@@ -222,7 +223,7 @@ func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
 		{0, "~"},
 	}
 	for _, ct := range countTests {
-		iter, err := r.NewIter(nil /* lower */, nil /* upper */)
+		iter, err := r.NewIter(nil /* lower */, nil /* upper */, false /* disableCache */)
 		if err != nil {
 			return err
 		}
@@ -275,7 +276,7 @@ func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
 			upper = []byte(words[upperIdx])
 		}
 
-		iter, err := r.NewIter(lower, upper)
+		iter, err := r.NewIter(lower, upper, false /* disableCache */)
 		if err != nil {
 			return err
 		}
@@ -637,7 +638,7 @@ func TestFinalBlockIsWritten(t *testing.T) {
 					if err != nil {
 						t.Errorf("nk=%d, vLen=%d: reader open: %v", nk, vLen, err)
 					}
-					iter, err := r.NewIter(nil /* lower */, nil /* upper */)
+					iter, err := r.NewIter(nil /* lower */, nil /* upper */, false /* disableCache */)
 					require.NoError(t, err)
 					i := newIterAdapter(iter)
 					for valid := i.First(); valid; valid = i.Next() {
@@ -672,7 +673,7 @@ func TestReaderGlobalSeqNum(t *testing.T) {
 	const globalSeqNum = 42
 	r.Properties.GlobalSeqNum = globalSeqNum
 
-	iter, err := r.NewIter(nil /* lower */, nil /* upper */)
+	iter, err := r.NewIter(nil /* lower */, nil /* upper */, false /* disableCache */)
 	require.NoError(t, err)
 	i := newIterAdapter(iter)
 	for valid := i.First(); valid; valid = i.Next() {
@@ -692,7 +693,7 @@ func TestMetaIndexEntriesSorted(t *testing.T) {
 	r, err := NewReader(f, ReaderOptions{})
 	require.NoError(t, err)
 
-	b, err := r.readBlock(r.metaIndexBH, nil /* transform */, nil /* attrs */)
+	b, err := r.readBlock(r.metaIndexBH, nil /* transform */, nil /* attrs */, false /* disableCache */)
 	require.NoError(t, err)
 	defer b.Release()
 

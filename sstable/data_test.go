@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
+
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/rangedel"
@@ -180,7 +181,7 @@ func runIterCmd(td *datadriven.TestData, r *Reader) string {
 			return fmt.Sprintf("%s: unknown arg: %s", td.Cmd, arg.Key)
 		}
 	}
-	origIter, err := r.NewIter(nil /* lower */, nil /* upper */)
+	origIter, err := r.NewIter(nil /* lower */, nil /* upper */, false)
 	if err != nil {
 		return err.Error()
 	}
